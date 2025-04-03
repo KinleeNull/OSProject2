@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--enable-auto-import CMakeFiles/cyb3053_project2.dir/src/main.c.o CMakeFiles/cyb3053_project2.dir/src/alloc.c.o -o cyb3053_project2.exe -Wl,--out-implib,libcyb3053_project2.dll.a -Wl,--major-image-version,0,--minor-image-version,0 

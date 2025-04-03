@@ -137,7 +137,21 @@ void *coalesce(free_block *block) {
  * @return A pointer to the allocated memory
  */
 void *do_alloc(size_t size) {
-    return NULL;
+	void *p = sbrk(0);
+
+	intptr_t align = (intptr_t) p&(ALIGNMENT - 1);
+	intptr_t adjust = (align == 0) ? 0 : ALIGNMENT - align;
+
+	void *request = sbrk(size + adjust + sizeof(header));
+	if (request == (void*) -1) { //sbrk failed
+		return NULL;
+	}
+	void *aligned = (void*) ((intptr_t) request + adjust);
+	header *hdr = (header*) aligned;
+	hdr->size = size;
+	hdr->magic = (int) 0x01234567;
+
+	return (char*) aligned + sizeof(header);
 }
 
 /**
@@ -147,7 +161,28 @@ void *do_alloc(size_t size) {
  * @return A pointer to the requested block of memory
  */
 void *tumalloc(size_t size) {
-    return NULL;
+	free_block *block;
+	header *hptr;
+
+	if (HEAD == NULL) {
+		void *ptr = do_alloc(size);
+		return ptr;
+	} else {
+		while (block != NULL) {
+			if (size <= block->size) {
+				hptr = split(block, size + sizeof(header));
+				remove_free_block(block);
+				hptr->size = size;
+				hptr->magic = 0x01234567;
+				return (void *)((char*)hptr + sizeof(header));
+			}
+			block = block->next;
+		}
+		if (!block) { // no block is big enough
+                        void *ptr = do_alloc(size);
+                        return ptr;
+		}
+	}
 }
 
 /**
@@ -158,7 +193,13 @@ void *tumalloc(size_t size) {
  * @return A pointer to the requested block of initialized memory
  */
 void *tucalloc(size_t num, size_t size) {
-    return NULL;
+    	size_t total_size = num * size;
+	void *ptr = tumalloc(total_size);
+
+	if (ptr) {
+		memset(ptr, 0, total_size);
+	}
+	return ptr;
 }
 
 /**
@@ -169,7 +210,28 @@ void *tucalloc(size_t num, size_t size) {
  * @return A new pointer containing the contents of ptr, but with the new_size
  */
 void *turealloc(void *ptr, size_t new_size) {
-    return NULL;
+	if (new_size == 0) {
+		tufree(ptr);
+    		return NULL;
+	}
+
+	if (ptr == NULL) {
+		return tumalloc(new_size);
+	}
+
+	void *new_ptr = tumalloc(new_size);
+	if (new_ptr == NULL) {
+		return NULL;
+	}
+
+	header *old_hdr = (header *)((char*)ptr - sizeof(header));
+	size_t old_size = old_hdr->size;
+
+	// Copy contents from old block to new block
+	memcpy(new_ptr, ptr, (old_size < new_size ? old_size : new_size));
+
+	tufree(ptr);
+	return new_ptr;
 }
 
 /**
@@ -178,5 +240,17 @@ void *turealloc(void *ptr, size_t new_size) {
  * @param ptr Pointer to the allocated piece of memory
  */
 void tufree(void *ptr) {
+	header *hptr = (header *)((char*)ptr - sizeof(header));
+	free_block *block = (free_block *) hptr;
 
+	if (hptr->magic == 0x01234567) {
+		block = (free_block *)hptr;
+		block->size = hptr->size;
+		block->next = HEAD;
+		HEAD = block;
+		coalesce(block);
+	} else {
+		printf("MEMORY CORRUPTION DETECTED");
+		abort();
+	}
 }
