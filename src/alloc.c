@@ -137,15 +137,19 @@ void *coalesce(free_block *block) {
  * @return A pointer to the allocated memory
  */
 void *do_alloc(size_t size) {
+	// Call sbrk
 	void *p = sbrk(0);
 
 	intptr_t align = (intptr_t) p&(ALIGNMENT - 1);
 	intptr_t adjust = (align == 0) ? 0 : ALIGNMENT - align;
 
+	// User's request to sbrk
 	void *request = sbrk(size + adjust + sizeof(header));
 	if (request == (void*) -1) { //sbrk failed
 		return NULL;
 	}
+	
+	// Align to fit the 16 ALIGNMENT
 	void *aligned = (void*) ((intptr_t) request + adjust);
 	header *hdr = (header*) aligned;
 	hdr->size = size;
@@ -163,20 +167,21 @@ void *do_alloc(size_t size) {
 void *tumalloc(size_t size) {
 	free_block *block;
 	header *hptr;
-
+	
+	// If HEAD is empty, ask for more memory
 	if (HEAD == NULL) {
 		void *ptr = do_alloc(size);
 		return ptr;
 	} else {
-		while (block != NULL) {
-			if (size <= block->size) {
+		while (block != NULL) { // for block in free_list
+			if (size <= block->size) { // If block is big enough
 				hptr = split(block, size + sizeof(header));
 				remove_free_block(block);
 				hptr->size = size;
 				hptr->magic = 0x01234567;
 				return (void *)((char*)hptr + sizeof(header));
-			}
-			block = block->next;
+			} 
+			block = block->next; // Iterate to the next block
 		}
 		if (!block) { // no block is big enough
                         void *ptr = do_alloc(size);
@@ -193,9 +198,11 @@ void *tumalloc(size_t size) {
  * @return A pointer to the requested block of initialized memory
  */
 void *tucalloc(size_t num, size_t size) {
+	// Get total size and ask for block of memory of that size
     	size_t total_size = num * size;
 	void *ptr = tumalloc(total_size);
 
+	// Initialize to 0
 	if (ptr) {
 		memset(ptr, 0, total_size);
 	}
@@ -210,20 +217,24 @@ void *tucalloc(size_t num, size_t size) {
  * @return A new pointer containing the contents of ptr, but with the new_size
  */
 void *turealloc(void *ptr, size_t new_size) {
+	// If new size is 0, we don't need to do anything to it
 	if (new_size == 0) {
 		tufree(ptr);
     		return NULL;
 	}
 
+	// Ask for a block of memory if ptr is empty
 	if (ptr == NULL) {
 		return tumalloc(new_size);
 	}
 
+	// Make a pointer to a block of memory with the new size
 	void *new_ptr = tumalloc(new_size);
 	if (new_ptr == NULL) {
 		return NULL;
 	}
 
+	// Find the old size to compare it to the new size
 	header *old_hdr = (header *)((char*)ptr - sizeof(header));
 	size_t old_size = old_hdr->size;
 
@@ -243,6 +254,7 @@ void tufree(void *ptr) {
 	header *hptr = (header *)((char*)ptr - sizeof(header));
 	free_block *block = (free_block *) hptr;
 
+	// If the magic number is correct, free the block
 	if (hptr->magic == 0x01234567) {
 		block = (free_block *)hptr;
 		block->size = hptr->size;
